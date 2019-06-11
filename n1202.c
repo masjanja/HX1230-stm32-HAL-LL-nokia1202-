@@ -1,75 +1,155 @@
-#include "stm32f1xx_hal.h"
 #include "main.h"
 #include "n1202.h"
 #include "stdlib.h"
 #include "gpio.h"
-//#include "spi.h"
+#include "spi.h"
+
+//#define soft_SPI //реализация софтверного SPI если ваш контроллер не поддерживает работу в 9 битнои режиме
+//#define HAL	//если используем HAL раскомментируйте эту строку
+
+#ifdef HAL
+#include "stm32f0xx_hal.h"
+#endif
+
 uint8_t _LCD_RAM[LCD_X*LCD_String]; // Память нашего LCD
 
-
-// Отправляем байт данных дисплею
-void LCD_SendByte(uint8_t mode, uint8_t c)
+void delay_us ( uint32_t us )
 {
-  // Опускаем ножку CS для дисплея
-	HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_RESET);
-  // Формируем первый передаваемый бит - выбор память-команда
-	if (mode) {
-		HAL_GPIO_WritePin(LED_MOSI_GPIO_Port, LED_MOSI_Pin, GPIO_PIN_SET);
-	}
-	else {
-		HAL_GPIO_WritePin(LED_MOSI_GPIO_Port, LED_MOSI_Pin, GPIO_PIN_RESET);
-	};
-	// Проталкиваем тактовым импульсом
-	HAL_GPIO_WritePin(LED_SCK_GPIO_Port, LED_SCK_Pin, GPIO_PIN_SET);
-	// В цикле передаем остальные биты
-	for(uint8_t i=0; i<8; i++) {
-    // Сбрасываем тактовую ножку
-    HAL_GPIO_WritePin(LED_SCK_GPIO_Port, LED_SCK_Pin, GPIO_PIN_RESET);
-    // Выставляем бит данных
-		if (c & 0x80) {
+volatile uint32_t delay = (us * (SystemCoreClock / 1000000)/8);
+while (delay--);
+}
+
+void delay_ms ( uint32_t ms )
+{
+volatile uint32_t delay = (ms * (SystemCoreClock / 1000)/8);
+while (delay--);
+}
+
+
+#ifdef soft_SPI
+	#ifdef HAL
+	//софтверная реализация spi
+	// Отправляем байт данных дисплею
+	void LCD_SendByte(uint8_t mode, uint8_t c)
+	{
+	  // Опускаем ножку CS для дисплея
+		HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_RESET);
+	  // Формируем первый передаваемый бит - выбор память-команда
+		if (mode) {
 			HAL_GPIO_WritePin(LED_MOSI_GPIO_Port, LED_MOSI_Pin, GPIO_PIN_SET);
 		}
 		else {
 			HAL_GPIO_WritePin(LED_MOSI_GPIO_Port, LED_MOSI_Pin, GPIO_PIN_RESET);
 		};
-		// Тактом ее, тактом
+		// Проталкиваем тактовым импульсом
 		HAL_GPIO_WritePin(LED_SCK_GPIO_Port, LED_SCK_Pin, GPIO_PIN_SET);
-		// Сдвигаем данные
-    c <<= 1;
-	};
-	HAL_GPIO_WritePin(LED_SCK_GPIO_Port, LED_SCK_Pin, GPIO_PIN_RESET);
+		// В цикле передаем остальные биты
+		for(uint8_t i=0; i<8; i++) {
+		// Сбрасываем тактовую ножку
+		HAL_GPIO_WritePin(LED_SCK_GPIO_Port, LED_SCK_Pin, GPIO_PIN_RESET);
+		// Выставляем бит данных
+			if (c & 0x80) {
+				HAL_GPIO_WritePin(LED_MOSI_GPIO_Port, LED_MOSI_Pin, GPIO_PIN_SET);
+			}
+			else {
+				HAL_GPIO_WritePin(LED_MOSI_GPIO_Port, LED_MOSI_Pin, GPIO_PIN_RESET);
+			}
+			// Тактом ее, тактом
+			HAL_GPIO_WritePin(LED_SCK_GPIO_Port, LED_SCK_Pin, GPIO_PIN_SET);
+			// Сдвигаем данные
+		c <<= 1;
+		}
+		HAL_GPIO_WritePin(LED_SCK_GPIO_Port, LED_SCK_Pin, GPIO_PIN_RESET);
 
-	HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_SET);
-}
+		HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_SET);
+	}
+	#else
+	//софтверная реализация spi ll
+	// Отправляем байт данных дисплею
+	void LCD_SendByte(uint8_t mode, uint8_t c)
+	{
+	// Опускаем ножку CS для дисплея
+		LL_GPIO_ResetOutputPin(LED_CS_GPIO_Port, LED_CS_Pin);
+	  // Формируем первый передаваемый бит - выбор память-команда
+		if (mode) {
+			LL_GPIO_SetOutputPin(LED_MOSI_GPIO_Port, LED_MOSI_Pin);
+		}
+		else {
+			LL_GPIO_ResetOutputPin(LED_MOSI_GPIO_Port, LED_MOSI_Pin);
+		}
+		// Проталкиваем тактовым импульсом
+		LL_GPIO_SetOutputPin(LED_SCK_GPIO_Port, LED_SCK_Pin);
+		// В цикле передаем остальные биты
+		for(uint8_t i=0; i<8; i++) {
+		// Сбрасываем тактовую ножку
+			LL_GPIO_ResetOutputPin(LED_SCK_GPIO_Port, LED_SCK_Pin);
+		// Выставляем бит данных
+			if (c & 0x80) {
+				LL_GPIO_SetOutputPin(LED_MOSI_GPIO_Port, LED_MOSI_Pin);
+			}
+			else {
+				LL_GPIO_ResetOutputPin(LED_MOSI_GPIO_Port, LED_MOSI_Pin);
+			};
+			// Тактом ее, тактом
+			LL_GPIO_SetOutputPin(LED_SCK_GPIO_Port, LED_SCK_Pin);
+			// Сдвигаем данные
+		c <<= 1;
+		}
+		LL_GPIO_ResetOutputPin(LED_SCK_GPIO_Port, LED_SCK_Pin);
 
-/*
-void LCD_SendByte(uint8_t mode, uint8_t c)
-{
-	uint8_t SPI_Data[2];
-	HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_RESET);
-	SPI_Data[0] = c;
-	SPI_Data[1] = mode;
+		LL_GPIO_SetOutputPin(LED_CS_GPIO_Port, LED_CS_Pin);
+	}
+	#endif
 
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(LED_MOSI_GPIO_Port, LED_MOSI_Pin, mode);
-	HAL_GPIO_WritePin(LED_MOSI_GPIO_Port, LED_MOSI_Pin, GPIO_PIN_RESET);
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(LED_SCK_GPIO_Port, LED_SCK_Pin, GPIO_PIN_SET);
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(LED_SCK_GPIO_Port, LED_SCK_Pin, GPIO_PIN_RESET);
-	HAL_Delay(1);
-	HAL_SPI_Transmit(&hspi1, SPI_Data, 1, 5);
+#else
 
-	HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_SET);
+#ifdef HAL
+	//реализация работы HW SPI с помощью HAL
+	void LCD_SendByte(uint8_t mode, uint8_t c)
+	{
+		uint8_t SPI_Data[2];
 
-}
-*/
 
-// Очистка памяти дисплея
+		HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_RESET);
+		SPI_Data[0] = c;
+		SPI_Data[1] = mode;
+		HAL_SPI_Transmit(&hspi1, SPI_Data, 1, 5);
+		//delay_us(1);
+		HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_SET);
+	}
+
+	#else
+
+
+	//реализация работы HW SPI с помощью LL
+	void LCD_SendByte(uint8_t mode, uint8_t c)
+	{
+
+		uint16_t data = 0; //задаем переменную для хранения сообщения для отправки 16 бит, потому что используем 9 битный spi
+		data = c; //записываем данные в переменную для отправки
+
+		if (mode == 1)//проверяем что нужно отправить данные/команда
+			{
+			data |= (1<<8); //записываем девятый бит
+			}
+		else data &= ~(1<<8); //записываем девятый бит
+
+		LL_GPIO_ResetOutputPin(LED_CS_GPIO_Port, LED_CS_Pin); //включаем чип селект
+		LL_SPI_TransmitData16(SPI1, data);//шлём данные
+		LL_GPIO_SetOutputPin(LED_CS_GPIO_Port, LED_CS_Pin); //отпускаем чип селект
+
+	}
+
+	#endif
+
+#endif
+
+
+	// Очистка памяти дисплея
 void LCD_Clear(void) {
-  for (int index = 0; index < 864 ; index++){
-    _LCD_RAM[index] = (0x00);
-  }
+	 for (int index = 0; index < 864 ; index++){
+	_LCD_RAM[index] = (0x00);
+	 }
 }
 
 // Обновляем данные на экране
@@ -185,14 +265,16 @@ void LCD_print(uint8_t x, uint8_t y, uint8_t color, char *str) {
   }
 }
 
+/*
 // Вывод числовых значений
+// закомментировал ибо  много памяти сжирает
 void LCD_write(uint8_t x, uint8_t y, uint8_t color, float num){
   char c[10];
 //	sprintf(c, "text %f\n", num);
 	sprintf(c, "%5.2f", num);
   LCD_print(x, y, color, c);
 }
-
+*/
 // Вывод картинки
 void LCD_DrawBitmap(uint8_t x, uint8_t y, const char *bitmap, uint8_t w, uint8_t h, uint8_t color) {
   for (int16_t j=0; j<h; j++) {
@@ -203,23 +285,24 @@ void LCD_DrawBitmap(uint8_t x, uint8_t y, const char *bitmap, uint8_t w, uint8_t
 }
 
 
+#ifdef HAL
+
 // Инициализируем дисплей
 void LCD_Init(void) {
   // Инициализация дисплея
 	HAL_GPIO_WritePin(LED_RESET_GPIO_Port, LED_RESET_Pin, GPIO_PIN_RESET); // Активируем ресет
-	HAL_Delay(15);
+	delay_ms(10);
 	HAL_GPIO_WritePin(LED_RESET_GPIO_Port, LED_RESET_Pin, GPIO_PIN_SET);   // Деактивируем ресет
-	HAL_GPIO_WritePin(LED_SCK_GPIO_Port, LED_SCK_Pin, GPIO_PIN_RESET);     // Тактовый вывод низкое состояние
 
-
-	HAL_GPIO_WritePin(LED_MOSI_GPIO_Port, LED_MOSI_Pin, GPIO_PIN_RESET);   // Вывод данных в низкое состояние
 	HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_RESET);			 // Выбираем дисплей
 	// Задержка
-  	HAL_Delay(5);
-	HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_SET);			 // Выбираем дисплей
+  	delay_ms(5);
+  	HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_SET);			 // Выбираем дисплей
+	delay_ms(1);
 	LCD_SendByte(LCD_C, 0xE2);  // Сброс чипа
+	LCD_SendByte(LCD_C, 0xE2);  // Сброс чипа ещё раз, глюк аппаратного spi
 
-	HAL_Delay(5);
+	delay_ms(5);
   // Устанавливаем энергию заряда сегмента
 	LCD_SendByte(LCD_C, 0x3D);  // Умножитель энергии заряда
 	LCD_SendByte(LCD_C, 0x02); 	// Не понятное значение умножителя
@@ -232,9 +315,54 @@ void LCD_Init(void) {
 	LCD_SendByte(LCD_C, 0x2F);  // Booster ON Voltage regulator ON Voltage follover ON
 	LCD_SendByte(LCD_C, 0xA0);  // Segment driver direction select: Normal
 	LCD_SendByte(LCD_C, 0xAF);  // Включение дисплея
-	HAL_Delay(10);
+	delay_ms(10);
   // Очищаем, обновляем
 
   LCD_Clear();
   LCD_Update();
 }
+
+#else
+
+// Инициализируем дисплей
+void LCD_Init(void) {
+	//Включаем SPI
+	LL_SPI_Enable(SPI1);
+  // Инициализация дисплея
+	LL_GPIO_ResetOutputPin(LED_RESET_GPIO_Port, LED_RESET_Pin);
+	//HAL_GPIO_WritePin(LED_RESET_GPIO_Port, LED_RESET_Pin, GPIO_PIN_RESET); // Активируем ресет
+	delay_ms(10);
+	LL_GPIO_SetOutputPin(LED_RESET_GPIO_Port, LED_RESET_Pin);
+	//HAL_GPIO_WritePin(LED_RESET_GPIO_Port, LED_RESET_Pin, GPIO_PIN_SET);   // Деактивируем ресет
+
+	LL_GPIO_ResetOutputPin(LED_CS_GPIO_Port, LED_CS_Pin);
+	//HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_RESET);			 // Выбираем дисплей
+	// Задержка
+  	delay_ms(5);
+	LL_GPIO_ResetOutputPin(LED_CS_GPIO_Port, LED_CS_Pin);
+  	//HAL_GPIO_WritePin(LED_CS_GPIO_Port, LED_CS_Pin, GPIO_PIN_SET);			 // Выбираем дисплей
+	delay_ms(1);
+	LCD_SendByte(LCD_C, 0xE2);  // Сброс чипа
+	LCD_SendByte(LCD_C, 0xE2);  // Сброс чипа ещё раз, глюк аппаратного spi
+
+	delay_ms(5);
+  // Устанавливаем энергию заряда сегмента
+	LCD_SendByte(LCD_C, 0x3D);  // Умножитель энергии заряда
+	LCD_SendByte(LCD_C, 0x02); 	// Не понятное значение умножителя
+  // Команда и следом данные по контрастности
+	LCD_SendByte(LCD_C, 0xE1);  // Additional VOP for contrast increase
+ 	LCD_SendByte(LCD_C, 0x90);  // from -127 to +127
+  // Устанавливаем режим работы Normal
+ 	LCD_SendByte(LCD_C, 0xA4);  // Power saver off
+
+	LCD_SendByte(LCD_C, 0x2F);  // Booster ON Voltage regulator ON Voltage follover ON
+	LCD_SendByte(LCD_C, 0xA0);  // Segment driver direction select: Normal
+	LCD_SendByte(LCD_C, 0xAF);  // Включение дисплея
+	delay_ms(10);
+  // Очищаем, обновляем
+
+  LCD_Clear();
+  LCD_Update();
+}
+
+#endif

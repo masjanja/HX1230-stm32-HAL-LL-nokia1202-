@@ -124,7 +124,8 @@ while (delay--);
 	//реализация работы HW SPI с помощью LL
 	void LCD_SendByte(uint8_t mode, uint8_t c)
 	{
-
+		//Включаем SPI
+	        LL_SPI_Enable(SPI1);
 		uint16_t data = 0; //задаем переменную для хранения сообщения для отправки 16 бит, потому что используем 9 битный spi
 		data = c; //записываем данные в переменную для отправки
 
@@ -326,8 +327,7 @@ void LCD_Init(void) {
 
 // Инициализируем дисплей
 void LCD_Init(void) {
-	//Включаем SPI
-	LL_SPI_Enable(SPI1);
+
   // Инициализация дисплея
 	LL_GPIO_ResetOutputPin(LED_RESET_GPIO_Port, LED_RESET_Pin);
 	//HAL_GPIO_WritePin(LED_RESET_GPIO_Port, LED_RESET_Pin, GPIO_PIN_RESET); // Активируем ресет
